@@ -1,0 +1,14 @@
+# Secrets: API keys, Gmail app password, the voice endpoint's shared secret
+.env
+
+# Local state
+.venv/
+__pycache__/
+shoes.db
+shoes.db.bak*
+traces.jsonl
+outbox/
+tests/_tmp/
+
+# Downloaded tools (tools/cloudflared.exe is ~55 MB)
+tools/

@@ -1,0 +1,9 @@
+langgraph
+langchain-core
+langchain-mistralai
+langchain-groq
+ddgs
+python-dotenv
+truststore
+fastapi
+uvicorn[standard]
