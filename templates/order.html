@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order_id }}{% endblock %}
+{% block body %}
+{% if not order %}
+  <section class="pitch"><h1>Order {{ order_id }}</h1></section>
+  <div class="empty"><p>That order was not placed from here. <a href="/orders">See your orders</a>.</p></div>
+{% else %}
+<section class="pitch">
+  <h1>Order {{ order.OrderID }}</h1>
+  <p class="proverb">{% if order.PaymentStatus == 'PAID' %}Paid in full. Wear them well.
+    {%- elif order.PaymentStatus == 'PENDING' %}Your phone is ringing. Enter your PIN.
+    {%- else %}Held for you until you pay.{% endif %}</p>
+</section>
+
+{% if problem %}<p class="problem">{{ problem }}</p>{% endif %}
+{% if sent %}<p class="problem" style="background:#fdf0d4;border-top-color:#e9a712">Check your phone
+  and enter your M-Pesa PIN. This page updates itself.</p>{% endif %}
+
+<section class="receipt">
+  <h2>{{ order.StyleDesc }}</h2>
+  <dl>
+    <dt>Ordered</dt><dd>{{ order.OrderDate }}</dd>
+    {% if order.ListPrice > order.Amount %}
+    <dt>On the tag</dt><dd>${{ order.ListPrice|round(2) }}</dd>
+    <dt>Mo's price</dt><dd>${{ order.Amount|round(2) }}</dd>
+    <dt>Talked off</dt><dd>&minus;${{ (order.ListPrice - order.Amount)|round(2) }}</dd>
+    {% endif %}
+  </dl>
+
+  <hr class="tear">
+
+  <dl>
+    <dt class="total">To pay</dt>
+    <dd class="total">KSh {{ '{:,}'.format(kes(order.Amount)) }}</dd>
+  </dl>
+
+  <p id="state">
+    {% if order.PaymentStatus == 'PAID' %}
+      <span class="state paid stamp">Paid</span>
+      <span class="small">M-Pesa receipt {{ order.MpesaReceipt }}</span>
+    {% elif order.PaymentStatus == 'PENDING' %}
+      <span class="state pending">Waiting for your PIN</span>
+    {% else %}
+      <span class="state unpaid">Not paid yet</span>
+    {% endif %}
+  </p>
+
+  {% if order.PaymentStatus != 'PAID' %}
+  <form method="post" action="/orders/{{ order.OrderID }}/pay">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="pay" type="submit">
+      {%- if order.PaymentStatus == 'PENDING' %}Send the prompt again
+      {%- else %}Pay KSh {{ '{:,}'.format(kes(order.Amount)) }} by M-Pesa{% endif %}
+    </button>
+  </form>
+  {% if me %}<p class="small">The prompt goes to the number on your profile, the one ending
+    {{ me.phone[-3:] }}.</p>{% endif %}
+  {% endif %}
+</section>
+
+<p><a href="/">Back to the shop</a></p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if order and order.PaymentStatus != 'PAID' %}
+<script>
+/* While a prompt is on the phone, ask the shop what M-Pesa said. The shop checks with Safaricom
+   itself rather than trusting whatever arrives at the callback. */
+(function () {
+  const state = document.getElementById("state");
+  let tries = 0;
+  const look = setInterval(async function () {
+    if (++tries > 40) return clearInterval(look);          // two minutes, then leave it alone
+    try {
+      const r = await fetch("/api/orders/{{ order.OrderID }}/status");
+      if (!r.ok) return;
+      const out = await r.json();
+      if (out.status === "PAID") {
+        clearInterval(look);
+        /* Built, not interpolated: the receipt comes from M-Pesa, and text from elsewhere never
+           becomes markup here. */
+        state.textContent = "";
+        const paid = document.createElement("span");
+        paid.className = "state paid stamp";
+        paid.textContent = "Paid";
+        const ref = document.createElement("span");
+        ref.className = "small";
+        ref.textContent = " M-Pesa receipt " + out.receipt;
+        state.append(paid, ref);
+        const form = document.querySelector("form[action$='/pay']");
+        if (form) form.remove();
+      }
+    } catch (e) { /* the page still works without this */ }
+  }, 3000);
+})();
+</script>
+{% endif %}
+{% endblock %}

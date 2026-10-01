@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="pitch">
+  <h1>Name your price.</h1>
+  <p class="proverb">Bei ni mazungumzo &mdash; <em>a price is a conversation</em>.</p>
+  <p>Mo sells every pair himself, and he argues about all of them. Tell him what you are after, make
+    him an offer by text or out loud, and pay with M-Pesa once you have shaken on it.</p>
+  <div class="haggle-bar">
+    <a class="talk" href="/chat">Haggle by text</a>
+    <a class="call" href="/call">Talk to Mo</a>
+  </div>
+</section>
+
+{% if err %}<p class="problem">{{ err }}</p>{% endif %}
+
+<ul class="stall">
+  {% for shoe in shoes %}
+  <li class="pair">
+    <h2>{{ shoe.StyleDesc }}</h2>
+    <p class="about">{{ shoe.ShoeColors }}, made for {{ shoe.BestFitActivity|lower }}
+      {%- if shoe.InvCount <= 2 %} &middot; <span class="last">{{ shoe.InvCount }} left</span>{% endif %}</p>
+    <p class="tag">
+      <span class="usd">${{ shoe.Price|round(0, 'ceil')|int }}</span>
+      <span class="ksh">KSh {{ '{:,}'.format(kes(shoe.Price)) }}</span>
+    </p>
+    <form method="post" action="/buy">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="shoe_id" value="{{ shoe.ShoeID }}">
+      <button type="submit">Buy at ${{ shoe.Price|round(0, 'ceil')|int }}</button>
+      <a class="button quiet" href="/chat?about={{ shoe.ShoeID }}">Make an offer</a>
+    </form>
+  </li>
+  {% else %}
+  <li class="empty"><p>The shelves are bare today. Mo is out buying more.</p></li>
+  {% endfor %}
+</ul>
+{% endblock %}

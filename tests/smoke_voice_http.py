@@ -1,13 +1,15 @@
 """LIVE: a real haggle over real HTTP against the running voice server and the real models.
 
-Start the server first, against a throwaway database:
-    set DB_PATH=tests\\_tmp\\live.db && set TRACE_PATH=tests\\_tmp\\live_trace.jsonl && python voice_server.py
+Start the server first, against a throwaway database AND with email switched off - this script
+only drives the server, so the server's own environment decides whether mail goes out:
+    set DB_PATH=tests\\_tmp\\live.db && set TRACE_PATH=tests\\_tmp\\live_trace.jsonl && set SMTP_USER= && set OUTBOX_DIR=tests\\_tmp\\outbox && python voice_server.py
 then:
     python tests/smoke_voice_http.py
 
 Plays the platform's part exactly: sends the whole transcript every turn, streams the reply,
 and measures time-to-first-word from the caller's side of the socket. Spends free-tier quota.
 """
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import json
 import os
 import statistics

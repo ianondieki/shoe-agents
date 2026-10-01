@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Your orders{% endblock %}
+{% block body %}
+<section class="pitch">
+  <h1>Your orders</h1>
+  <p class="proverb">Kila deni hulipwa &mdash; <em>every debt gets paid</em>.</p>
+</section>
+{% if not me %}
+  <div class="empty">
+    <p>Nothing here yet. <a href="/profile">Tell Mo who you are</a> and whatever you order will show
+      up on this phone.</p>
+  </div>
+{% elif not orders %}
+  <div class="empty"><p>No orders yet. <a href="/">Go and haggle for a pair.</a></p></div>
+{% else %}
+<ul class="orders">
+  {% for order in orders %}
+  <li>
+    <h2><a href="/orders/{{ order.OrderID }}">{{ order.StyleDesc }}</a></h2>
+    <p class="when">Order {{ order.OrderID }}, {{ order.OrderDate }}
+      {%- if order.Status == 'CANCELLED' %} &middot; cancelled{% endif %}
+      &middot;
+      {% if order.PaymentStatus == 'PAID' %}paid
+      {%- elif order.PaymentStatus == 'PENDING' %}waiting for your PIN
+      {%- else %}not paid yet{% endif %}</p>
+    <p class="sum">KSh {{ '{:,}'.format(kes(order.Amount)) }}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

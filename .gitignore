@@ -9,6 +9,9 @@ shoes.db.bak*
 traces.jsonl
 outbox/
 tests/_tmp/
+.practice/
+.cache/
+call.log
 
 # Downloaded tools (tools/cloudflared.exe is ~55 MB)
 tools/

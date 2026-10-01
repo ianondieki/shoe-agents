@@ -4,6 +4,7 @@ A scripted model that really streams (token chunks, and tool calls as tool_call_
 behind the real FastAPI app over an in-process transport: no API keys, no network, no quota.
 Everything the platform relies on is asserted from the raw SSE bytes it would receive.
 """
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import asyncio
 import json
 import os
@@ -20,7 +21,6 @@ if os.path.exists(DB):
 os.environ["DB_PATH"] = DB
 # Isolated from the real .env: no shared secret (test 10 sets its own) and no real email.
 os.environ["VOICE_SHARED_SECRET"] = ""
-os.environ["SMTP_USER"] = os.environ["SMTP_PASSWORD"] = ""
 os.environ["TRACE_PATH"] = os.path.join(SCRATCH, "voice_server_trace.jsonl")
 if os.path.exists(os.environ["TRACE_PATH"]):
     os.remove(os.environ["TRACE_PATH"])
@@ -104,6 +104,7 @@ async def post(client, messages, session="call-A", stream=True, headers=None):
 
 
 async def main():
+    real_outbox_before = _safety.real_outbox_snapshot()
     model = Scripted(script=[], seen=[])
     app = voice_server.create_app(agent=voice_server.build_server_agent(llm=[("scripted", model)]))
     transport = httpx.ASGITransport(app=app)
@@ -227,7 +228,39 @@ async def main():
     # emphasis mid-sentence keeps its word - dropping it would invert the meaning
     assert sp("that's *not* the price") == "that's not the price", sp("that's *not* the price")
     assert sp("Sure. *laughs* Okay then.") == "Sure. Okay then.", sp("Sure. *laughs* Okay then.")
-    print("12. sanitiser: $ -> dollars, stage directions dropped, emphasis kept, run-ons split, markdown stripped")
+    # a terminal test call: the shop's own shoe number read out, and a dash the cutter split after
+    live = "Hey Jane, I’ve got a great pair for you—Shoe 101, the lightweight road runner in black."
+    assert sp(live) == "Hey Jane, I’ve got a great pair for you, the lightweight road runner in black.", sp(live)
+    assert sp("Shoe 103 is waterproof.") == "That pair is waterproof.", sp("Shoe 103 is waterproof.")
+    assert sp("The trail runner (ID: 102) is 120 dollars.") == "The trail runner is 120 dollars."
+    assert sp("I can do the trail shoe 108 dollars.") == "I can do the trail shoe 108 dollars.", "a price is not an id"
+    assert sp("It comes in size 42 and 43.") == "It comes in size 42 and 43."
+    cut = voice_server._cut
+    # a sentence of ordinary length is spoken whole: cut early, "...perfect for your | runs." was heard
+    assert cut(live[:-1]) == 0 and cut("Hi Jane, I've got a lightweight road runner in black that's perfect for your") == 0
+    # a long one splits at its last pause, so it is still phrased like speech
+    long = ("Hey Jane, I've got a great pair for you, the lightweight road runner in black, and it is super "
+            "comfy on long runs and on the treadmill as well")
+    assert long[:cut(long)].endswith("in black, "), long[:cut(long)]
+    # review: an id is only taken out if it is the shop's; prices, sizes and order numbers stay whole
+    for said, heard in (("I can do this shoe 108.", "I can do this shoe 108."),
+                        ("the item number 105 in beige", "the pair in beige"),
+                        ("I'd go with shoe 101 for trails.", "I'd go with that pair for trails."),
+                        ("Your order ID: 12 is confirmed.", "Your order ID: 12 is confirmed."),
+                        ("Thanks, customer ID 1.", "Thanks."),
+                        ("Between $120 - $130 for most pairs.", "Between 120 dollars to 130 dollars for most pairs."),
+                        ("Call 555-1234 for help.", "Call 555-1234 for help.")):
+        assert sp(said) == heard, (said, sp(said))
+    # a terminal test call: "Bye. (endcall)" - a bracketed stage direction is not said; a bracketed size is
+    assert sp("Bye. (endcall)") == "Bye.", sp("Bye. (endcall)")
+    assert sp("Sure (laughs), that's fine.") == "Sure, that's fine.", sp("Sure (laughs), that's fine.")
+    assert sp("The black one (size 9) is in stock.") == "The black one (size 9) is in stock."
+    # ...and a piece never starts with one - alone, "Shoe 101 and..." would read as a new sentence
+    dash = ("Hey Jane, I've got a great pair for you, and I think you will love it on the trails this summer"
+            "—Shoe 101 and the lightweight road runner")
+    assert cut(dash) and not voice_server._IDS.match(dash, cut(dash)), dash[cut(dash):]
+    print("12. sanitiser: $ -> dollars, stage directions dropped, emphasis kept, run-ons split, markdown stripped, "
+          "shop ids never read out, long sentences split at a pause")
 
     # ---- 13. the same defects end to end, through a real streamed turn ----
     model.script = [
@@ -353,6 +386,21 @@ async def main():
             invented = conn.execute("SELECT COUNT(*) FROM PriceQuote WHERE SessionID LIKE 'voice:rep-1%'").fetchone()[0]
         assert invented == 0, f"an offer the caller never made was quoted ({invented})"
     print(f"19. refused invented offers: said once ({out['text'].strip()!r}), and no quote was written")
+    # three terminal test calls: "I can offer it for 108 dollars. 108 dollars." - the price said twice
+    said: set = set()
+    assert voice_server._drop_repeats("I can offer it for 108 dollars. 108 dollars. ", said) == \
+        "I can offer it for 108 dollars. ", said
+    assert voice_server._drop_repeats("Is that good?", said) == "Is that good?", "a new short sentence must stay"
+    print("19b. a short sentence that only repeats part of an earlier one ('108 dollars.') is not said twice")
+
+    # ---- 20. the first real call: the model hung up on a customer trying to buy ----
+    app10 = voice_server.create_app(agent=voice_server.build_server_agent(llm=[("scripted", model)]))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app10), base_url="http://test") as c10:
+        model.script = [ai("I'm sorry, I can't find that one.", calls=[("end_call", {"reason": "goodbye"})])]
+        out = parse_sse((await post(c10, [{"role": "user", "content": "Okay, deal. Just go with the initial one."}],
+                                    session="real-1")).text)
+        assert out["finish"] == "stop" and not out["tool_calls"], f"hung up on a buying customer: {out}"
+    print("20. 'Okay, deal' + the model calling end_call: the line stays open - only the caller ends a call")
 
     # ---- 11. every turn left a voice event with time-to-first-text in the trace ----
     from tools import wait_for_emails
@@ -363,6 +411,10 @@ async def main():
     assert len(voice) >= 8 and all(e["ttft_ms"] is not None for e in voice), voice
     assert any(e["hung_up"] for e in voice) and any(e["fillers"] for e in voice)
     print(f"11. traces: {len(voice)} voice events, each with ttft_ms; hang-up and filler recorded")
+
+    wait_for_emails()
+    assert _safety.real_outbox_snapshot() == real_outbox_before, "a test wrote into the project's real outbox"
+    print("21. the project's real outbox is exactly as it was before the suite ran")
 
     print("\nALL VOICE SERVER ASSERTIONS PASSED")
 

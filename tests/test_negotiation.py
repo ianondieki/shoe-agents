@@ -4,6 +4,7 @@ In a live Phase 0 run the caller said "That's a bit steep. I'll give you eighty 
 agent placed an order for 119.99 - the price they had just refused - because the approver trusted
 the model. Everything below exists so that cannot happen again.
 """
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import json
 import os
 import sys
@@ -17,7 +18,6 @@ if os.path.exists(DB):
     os.remove(DB)
 os.environ["DB_PATH"] = DB
 os.environ["TRACE_PATH"] = ""
-os.environ["SMTP_USER"] = os.environ["SMTP_PASSWORD"] = ""  # confirmations dry-run to ./outbox
 sys.path.insert(0, ROOT)
 
 from db import db, init_db  # noqa: E402
@@ -25,6 +25,7 @@ from negotiation import ACCEPT, COUNTER, FINAL, HOLD, decide  # noqa: E402
 from tools import evaluate_offer, place_order  # noqa: E402
 from voice_agent import voice_approve  # noqa: E402
 
+REAL_OUTBOX_BEFORE = _safety.real_outbox_snapshot()
 init_db(reset=True)
 LIST, FLOOR = 119.99, 95.0  # shoe 102
 
@@ -138,7 +139,7 @@ from tools import wait_for_emails  # noqa: E402
 
 assert "send_email" not in {t.name for t in voice_agent.TOOLS}, "the voice agent must not bind send_email"
 wait_for_emails()
-outbox = sorted(glob.glob(os.path.join(ROOT, "outbox", "*.txt")), key=os.path.getmtime)
+outbox = sorted(glob.glob(os.path.join(os.environ["OUTBOX_DIR"], "*.txt")), key=os.path.getmtime)
 mail = open(outbox[-1], encoding="utf-8").read()
 with db() as conn:
     jane = conn.execute("SELECT Email FROM CustomerInfo WHERE CustomerID=1").fetchone()["Email"]
@@ -270,5 +271,68 @@ assert said(85.0, "Would you do eighty five?", "i-3").startswith("COUNTER")
 full = said(120.0, "Okay, I'll take it at the shelf price.", "i-4")
 assert full.startswith("ACCEPT") or full.startswith("FINAL"), f"agreeing to the shop's price was refused: {full}"
 print("19. 'too much' cannot become an invented offer of 100; 'Eighty.' and agreeing to the shop's price both work")
+
+# ---------- 20. the first real voice call: an unknown caller heard "out of stock" for a shoe in stock ----------
+fresh_db()
+from tools import customer_and_stock as cas  # noqa: E402
+
+unknown = json.loads(cas.invoke({"customer_name": "John Doe", "activity": ""}))
+assert unknown["customer"] is None and unknown["shoes"], f"unknown caller got an empty stock list: {unknown}"
+note = unknown["note"].lower()
+assert "is on file" in note and "spell" in note, unknown["note"]
+# and, since the shop now signs people up, the way to turn a stranger into a customer
+assert "create_customer" in note, unknown["note"]
+assert "Jane" not in unknown["note"] and "Kamau" not in unknown["note"], "leaked other customers' names"
+print(f"20a. unknown caller 'John Doe': told to ask them to spell it, and still sees {len(unknown['shoes'])} shoes in stock")
+
+trail = json.loads(cas.invoke({"customer_name": "Jane Doe", "activity": "trail"}))
+assert [s["ShoeID"] for s in trail["shoes"]] == [102], f"'trail' should find the trail runner: {trail['shoes']}"
+boots = json.loads(cas.invoke({"customer_name": "Jane Doe", "activity": "boots"}))
+assert [s["ShoeID"] for s in boots["shoes"]] == [103], f"'boots' should find the mid boot: {boots['shoes']}"
+nothing = json.loads(cas.invoke({"customer_name": "Jane Doe", "activity": "tennis"}))
+assert len(nothing["shoes"]) == 4 and "Nothing matched" in nothing["note"], nothing
+assert all(isinstance(s["Price"], int) for s in nothing["shoes"])
+print("20b. 'trail' finds the trail runner by name, 'boots' finds the mid boot, 'tennis' offers all 4 in stock")
+
+# ---------- 22. a terminal test call: speech-to-text turned a refusal into "Deep." and Mo ordered on it ----------
+from negotiation import said_yes  # noqa: E402
+
+fresh_db()
+qid, _, price = quote(102, 120.0, "d-1")           # "How much is the trail runner?" - the model "checks" it
+refused = order(102, qid, "d-2", said="Deep.")
+assert refused.startswith("Not ordered") and "clearly said yes" in refused, refused
+for no in ("No, that's fine.", "Okay, that's too much.", "Let me think about it.", "What colours has it got?"):
+    assert order(102, qid, "d-2", said=no).startswith("Not ordered"), no
+with db() as conn:
+    assert conn.execute("SELECT COUNT(*) FROM OrderDetails").fetchone()[0] == 0, "an order went through"
+agreed = order(102, qid, "d-3", said="Yes please, go ahead.")
+assert agreed.startswith("Order"), agreed
+yes = ["Okay, deal.", "Sure, go ahead.", "Alright, I'll take it.", "Why not!", "Why not?", "Put it through.",
+       "108 it is.", "Deal, email me the confirmation.", "Okay, deal. Just go with the initial one.", "Hmm, okay.",
+       "Can you put it through?", "Yes please, size 9."]
+assert all(said_yes(s) for s in yes), [s for s in yes if not said_yes(s)]
+print(f"22. 'Deep.' (a misheard refusal) and 4 other non-answers ordered nothing; 'Yes please, go ahead.' did; "
+      f"{len(yes)} ways of saying yes all count")
+
+# ---------- 23. review: a yes-word is not a yes when it opens a question or hides a lower number ----------
+fresh_db()
+qid, _, price = quote(102, 120.0, "q-1")
+assert price == 120, price
+for words in ("Okay, ninety.", "Why not ninety?",                         # a bare counter-offer
+              "Okay, so what sizes do you have?", "Great, and what colours?",   # a question
+              "Is that a good price?", "Alright, what's the lowest you can go?",
+              "Yes, I'm here.",                                          # the answer to "still there?"
+              "Can you put it through for less?"):
+    out = order(102, qid, "q-2", said=words)
+    assert out.startswith("Not ordered"), f"{words!r} placed an order: {out}"
+with db() as conn:
+    assert conn.execute("SELECT COUNT(*) FROM OrderDetails").fetchone()[0] == 0, "an order went through"
+assert order(102, qid, "q-3", said="Yes please, size 9. Put it through.").startswith("Order"), "a size is not an offer"
+print("23. 'Okay, ninety.', 'Why not ninety?', questions opening with a yes-word and 'Yes, I'm here.' order "
+      "nothing; 'Yes please, size 9. Put it through.' does")
+
+wait_for_emails()
+assert _safety.real_outbox_snapshot() == REAL_OUTBOX_BEFORE, "a test wrote into the project's real outbox"
+print("21. the project's real outbox is exactly as it was before the suite ran")
 
 print("\nALL NEGOTIATION ASSERTIONS PASSED")

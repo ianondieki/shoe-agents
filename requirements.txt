@@ -7,3 +7,10 @@ python-dotenv
 truststore
 fastapi
 uvicorn[standard]
+# the terminal phone call (call.py): microphone and speakers, speech detection
+sounddevice
+numpy
+webrtcvad-wheels
+httpx
+jinja2
+python-multipart

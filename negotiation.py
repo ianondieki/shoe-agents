@@ -103,12 +103,14 @@ def _words_value(words: list[str]) -> int | None:
     return total
 
 
-def spoken_offers(text: str, money_only: bool = True) -> list[float]:
+def spoken_offers(text: str, money_only: bool = True, bare: bool = False) -> list[float]:
     """Every amount of money the customer names in `text`, in order.
 
-    money_only=True (for refusing an order) counts only numbers in a money context, so "size 42"
-    never blocks a sale. money_only=False (for allowing an offer) counts every number said: after
-    "what price were you thinking?", a bare "Eighty." is an offer.
+    money_only=True counts only numbers in a money context, so "size 42" is never an offer.
+    money_only=False (for allowing an offer) counts every number said: after "what price were you
+    thinking?", a bare "Eighty." is an offer. bare=True (for refusing an order) also counts a number
+    said on its own - "Okay, ninety." to a quote of 108 is a counter-offer, not a yes - but still
+    never a size, a number of pairs or a percentage.
     """
     tokens = _TOKEN.findall((text or "").lower().replace("-", " ").replace(",", ""))
     found, i, last_money_end = [], 0, -1
@@ -134,8 +136,44 @@ def spoken_offers(text: str, money_only: bool = True) -> list[float]:
         # A number straight after another offer is an offer too: "would you take 80? 85? 90?"
         money = (dollar_sign or after in _CURRENCY or any(b in _BEFORE for b in before)
                  or i == last_money_end)
-        if not money_only or (money and not excluded):
+        if not money_only or ((money or bare) and not excluded):
             found.append(float(value))
             last_money_end = j
         i = j
     return found
+
+
+# ---------- a yes you can hear ----------
+# On a phone line the caller's words arrive through speech-to-text. A live test call turned "That's a
+# bit steep. I'll give you eighty dollars." into "Deep.", and the model ordered on it at full price.
+# So the words the model treats as agreement must contain one. A doubtful yes costs one more question
+# ("shall I put that through?"); a false yes costs a customer an order they never agreed to.
+_YES = re.compile(
+    r"\b(yes|yeah|yep|yup|ya|sure|ok|okay|alright|all right|deal|fine|agreed|agree|done|sold|"
+    r"perfect|great|good|go ahead|go on|go for it|do it|sounds good|sounds great|works|"
+    r"take it|take them|take that|take those|have it|have them|buy it|buy them|"
+    r"place it|place the order|order it|order them|book it|put it through|put that through|"
+    r"ring it up|confirm|correct|absolutely|definitely|of course|please do|let'?s go|why not|"
+    r"that'?s right|(?:that|then|\d+) it is)\b", re.I)
+# ...unless the same words hold back: "no, that's fine", "okay, that's too much", "not sure". Nor is a
+# question an answer - "Okay, so what sizes do you have?" opens with a yes-word and agrees to nothing -
+# and nor is "yes, I'm here", which answers "are you still there?", not "shall I put it through?".
+_HOLD_BACK = re.compile(
+    r"^\W*(no|nope|nah)\b|\bno deal\b|\?|\b(not|don'?t|do not|never|cancel|wait|hold on|hang on|"
+    r"maybe|later|think about it|let me think|too much|too expensive|too steep|too high|too pricey|"
+    r"steep|expensive|pricey|lowest|lower|less|cheaper|discount|better price|best price|"
+    r"what|which|how|when|where|who|why|is it|is that|are they|do you|does it|can you|could you|"
+    r"still here|still there|i'?m here|i am here|hear me|hello)\b", re.I)
+# A question that asks for the sale is a yes all the same: "Can you put it through?"
+_ASKS_TO_BUY = re.compile(r"\b(can|could|would|will) you (please )?(put|place|ring|book|order|wrap)\b", re.I)
+
+
+def said_yes(text: str) -> bool:
+    """Do these words agree to buy? Plain agreement, and nothing in them that holds back."""
+    text = re.sub(r"\bwhy not\b\W*", "yes ", text or "", flags=re.I)
+    if not _YES.search(text):
+        return False
+    rest = _ASKS_TO_BUY.sub(" ", text)
+    if rest != text:
+        rest = rest.replace("?", " ")      # the question WAS the request
+    return not _HOLD_BACK.search(rest)

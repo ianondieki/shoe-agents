@@ -1,4 +1,5 @@
 """Exercise the tracing layer end-to-end with scripted fake models: no API keys, no network."""
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import io
 import json
 import os

@@ -4,6 +4,7 @@ The adversarial review showed every one of these could be deleted with all other
 switching the breaker off, benching a 429 for ten minutes, or letting a string denial run the tool.
 Each test here fails if its mechanism is removed. No API keys, no network.
 """
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import os
 import sys
 import time

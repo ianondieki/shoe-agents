@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS CustomerInfo (
     Addr1             TEXT,
     City              TEXT,
     PreferredActivity TEXT,
-    ShoeSize          REAL
+    ShoeSize          REAL,
+    -- Where this customer came from, now that they can sign themselves up: 'seed' for the three the
+    -- shop started with, otherwise the channel that created them ('web', 'whatsapp', 'phone').
+    Source            TEXT NOT NULL DEFAULT 'seed',
+    CreatedAt         TEXT
 );
 CREATE TABLE IF NOT EXISTS ShoeInventory (
     ShoeID          INTEGER PRIMARY KEY,
@@ -65,9 +69,56 @@ CREATE TABLE IF NOT EXISTS OrderDetails (
     -- The quote this price came from, when it was negotiated. NULL for a straight list-price sale.
     QuoteID           INTEGER,
     PaymentStatus     TEXT NOT NULL DEFAULT 'UNPAID',
+    -- The LAST M-Pesa prompt sent for this order, and its receipt once paid. One order can be
+    -- prompted more than once (the customer cancels, the phone is off), so the attempts live in
+    -- Payment; these two columns are the current state, which is what the shop reads.
     CheckoutRequestID TEXT,
     MpesaReceipt      TEXT
 );
+-- One row per M-Pesa prompt sent: what was asked of whom, and what came back. An order can collect
+-- several. Money needs a trail that survives retries, and a callback can arrive twice - the
+-- CheckoutRequestID is unique, so the second copy changes nothing.
+CREATE TABLE IF NOT EXISTS Payment (
+    PaymentID         INTEGER PRIMARY KEY AUTOINCREMENT,
+    OrderID           INTEGER NOT NULL REFERENCES OrderDetails(OrderID),
+    Phone             TEXT NOT NULL,
+    AmountKes         INTEGER NOT NULL,
+    CheckoutRequestID TEXT UNIQUE,
+    MerchantRequestID TEXT,
+    Status            TEXT NOT NULL DEFAULT 'PENDING',   -- PENDING, PAID or FAILED
+    ResultCode        INTEGER,
+    Receipt           TEXT,
+    Reason            TEXT,
+    RequestedAt       TEXT NOT NULL,
+    SettledAt         TEXT
+);
+"""
+
+# Indexes live apart from SCHEMA because they are created AFTER migrate(): an index on a column that
+# an older database has not been given yet ("no such column: Phone") would stop it opening at all.
+INDEXES = """
+-- Which customer a browser has said it is. The cookie carries only a signed random id, so a stolen
+-- or forged cookie names nobody: the link between a browser and a customer lives here.
+CREATE TABLE IF NOT EXISTS WebSession (
+    SID        TEXT PRIMARY KEY,
+    CustomerID INTEGER NOT NULL REFERENCES CustomerInfo(CustomerID),
+    SeenAt     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS Payment_Order ON Payment(OrderID);
+-- One prompt at a time per order, enforced by the database rather than by a check-then-write that
+-- two taps can slip between. A second prompt for an order that is still pending cannot be recorded,
+-- so it is never sent, so nobody is charged twice.
+CREATE UNIQUE INDEX IF NOT EXISTS Payment_OnePending ON Payment(OrderID) WHERE Status = 'PENDING';
+-- WhatsApp messages already answered. Meta redelivers a webhook until it gets a 200, and answering
+-- the same message twice could put a second payment prompt on somebody's phone.
+CREATE TABLE IF NOT EXISTS WaSeen (
+    MessageID TEXT PRIMARY KEY,
+    SeenAt    TEXT NOT NULL
+);
+-- Customers now sign themselves up (on the web, over WhatsApp, on a call), so the phone number is
+-- how a returning one is found. Not unique: the seed customers share Daraja's test number, and a
+-- household can share a phone. create_customer matches on the phone AND the name.
+CREATE INDEX IF NOT EXISTS CustomerInfo_Phone ON CustomerInfo(Phone);
 """
 
 # Columns added after the first version of SCHEMA, as (table, column, definition).
@@ -83,6 +134,10 @@ MIGRATIONS = [
     ("ShoeInventory", "FloorPrice", "REAL NOT NULL DEFAULT 0"),
     ("OrderDetails", "QuoteID", "INTEGER"),
     ("OrderDetails", "ListPrice", "REAL NOT NULL DEFAULT 0"),
+    # Where a customer came from and when, now that they can sign themselves up: 'seed' for the
+    # three the shop started with, otherwise the channel that created them.
+    ("CustomerInfo", "Source", "TEXT NOT NULL DEFAULT 'seed'"),
+    ("CustomerInfo", "CreatedAt", "TEXT"),
 ]
 
 # CustomerID, CustomerName, Email, Phone, Addr1, City, PreferredActivity, ShoeSize
@@ -104,9 +159,14 @@ SHOES = [
 @contextmanager
 def db():
     """Open a connection, commit on success, roll back on error, always close."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # One process now serves a website, WhatsApp, M-Pesa's callback and phone calls at once, so
+    # reads and writes really do overlap. WAL lets readers carry on while one writer works, and the
+    # busy timeout waits for that writer instead of failing the request with "database is locked".
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     try:
         yield conn
         conn.commit()
@@ -134,6 +194,7 @@ def init_db(reset: bool = False) -> list[str]:
     with db() as conn:
         conn.executescript(SCHEMA)
         added = migrate(conn)
+        conn.executescript(INDEXES)      # after migrate: they index columns migrate may have added
         conn.executemany(
             """INSERT OR IGNORE INTO CustomerInfo
                (CustomerID, CustomerName, Email, Phone, Addr1, City, PreferredActivity, ShoeSize)
@@ -161,7 +222,7 @@ def init_db(reset: bool = False) -> list[str]:
                 [(s[6], s[0]) for s in SHOES],  # (FloorPrice, ShoeID)
             )
     if added:
-        print(f"  🗄️  migrated {DB_PATH}: added {', '.join(added)}")
+        print(f"  migrated {DB_PATH}: added {', '.join(added)}")
     return added
 
 

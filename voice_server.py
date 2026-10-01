@@ -72,7 +72,8 @@ Never hang up in the middle of a haggle."""
 # Backstop for a model that says goodbye but forgets the tool: when the caller AND the reply both
 # say goodbye, the line is closed anyway. Both sides are required, so a stray "bye" never ends a
 # call, and the order-turn guard still applies on top.
-_CALLER_BYE = re.compile(r"\b(good ?bye|bye|that'?s all|that is all|that'?s everything)\b", re.I)
+_CALLER_BYE = re.compile(r"\b(good ?bye|bye|that'?s all|that is all|that'?s everything|i'?m done|"
+                         r"see you|hang up|end the call)\b", re.I)
 _REPLY_BYE = re.compile(r"\b(good ?bye|bye|take care|have a (great|good|nice) (day|one|run))\b", re.I)
 
 SERVER_TOOLS = [*TOOLS, end_call]
@@ -103,12 +104,47 @@ _BOLD = re.compile(r"\*\*([^*\n]+?)\*\*")               # **Trail runner**: keep
 # this wrong would turn "that's *not* the price" into "that's the price".
 _STAGE = re.compile(r"(^|[.!?]\s+)\*[^*\n]{1,60}\*\s*")
 _EMPH = re.compile(r"\*([^*\n]+?)\*")
-_MONEY = re.compile(r"\$\s?(\d[\d,]*)(?:\.(\d{1,2}))?")
+# Thousands come in threes ("$1,200"): a comma after a price ends it ("$120, $130" is two prices).
+_MONEY = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?")
 _MARKUP = re.compile(r"[*_#`~|>]+")                     # stray markdown nobody should hear
 # "$120.Great" -> "120 dollars. Great"; "dollars.120" -> "dollars. 120". A letter must precede the
 # stop for a digit to follow it, so a decimal like 119.99 is never split.
 _RUN_ON = re.compile(r"([.!?])([A-Z])|(?<=[A-Za-z])([.!?])(\d)")
 _SPACES = re.compile(r"[ \t\r\n]+")
+# The shop's own numbers are for the tools, not the caller: live, Mo offered "Shoe 101, the lightweight
+# road runner". A marked id ("customer ID 1", "quote_id=12", "(ID: 102)") always goes; a plain "shoe
+# 101" goes only if 101 really is one of the shop's shoes, so "this shoe 108" keeps its price; and an
+# order number stays - the customer may want it.
+_IDS = re.compile(
+    r"\(\s*(?:(?:shoe|customer|quote|item|product)[ _]?)?id\s*[:=#]?\s*\d+\s*\)"
+    r"|(?:\b(?P<kind>shoe|customer|quote|item|product)[ _]?|\b)(?<!order )(?<!order_)id\s*[:=#]?\s*\d+\b"
+    r"|\b(?P<plain>shoe|item|product)\s*(?:#\s*|no\.\s*|number\s*)?(?P<num>\d{2,})\b(?!\s*(?:dollars?|bucks))",
+    re.I)
+_ASIDE = re.compile(r"\s*[,:;)—–]\s*")       # "Shoe 101, the road runner": the name follows
+# A stage direction in brackets is never words for the caller: live, Mo said "Bye. (endcall)". Only
+# these shapes go - "(size 9)" or "(the black one)" are things a caller should hear.
+_BRACKETED = re.compile(r"\s*[(\[]\s*(?:end[ _-]?call(?:ed|s)?|ends? (?:the )?call|call ends|hangs? up|"
+                        r"hanging up|laughs?|chuckles?|smiles?|sighs?|pauses?)\s*[)\]]", re.I)
+_DANGLING = re.compile(r"\s*[,;:]\s*(?=[.!?])")          # "Thanks, ." once an id has gone
+# A range reads as one ("120 to 130 dollars"); other dashes between words are pauses, said as commas
+# (the prompt asks for no dashes; models use them anyway).
+_RANGE = re.compile(r"(\$?\d[\d,.]*)\s*(?:—|–|\s-\s)\s*(\$?\d)")
+_DASH = re.compile(r"\s*(?:—|–|\s-\s)\s*")
+_SHOE_IDS: set[str] | None = None
+
+
+def _shoe_ids() -> set[str]:
+    """The shop's own shoe numbers, read once."""
+    global _SHOE_IDS
+    if _SHOE_IDS is None:
+        try:
+            from db import db
+
+            with db() as conn:
+                _SHOE_IDS = {str(r[0]) for r in conn.execute("SELECT ShoeID FROM ShoeInventory")}
+        except Exception:
+            return set()            # no shop yet: try again next time
+    return _SHOE_IDS
 
 
 def _dollars(m: re.Match) -> str:
@@ -117,7 +153,36 @@ def _dollars(m: re.Match) -> str:
     return f"{whole} dollars" + (f" and {cents} cents" if cents else "")
 
 
+def _no_ids(text: str) -> str:
+    """Take the shop's own numbers out of what Mo says, and keep the sentence whole."""
+    ids, out, last = _shoe_ids(), [], 0
+    for m in _IDS.finditer(text):
+        if m.group("plain") and m.group("num") not in ids:
+            continue                                    # "this shoe 108": a price, not a pair's number
+        before = text[:m.start()]
+        aside = _ASIDE.match(text, m.end())
+        shoe = bool(m.group("plain")) or (m.group("kind") or "").lower() in ("shoe", "item", "product")
+        end = m.end()
+        if aside or not shoe:
+            say = ""                                    # "Shoe 101, the road runner" / "customer ID 1, Jane"
+            end = aside.end() if aside else end
+        elif not before.strip() or before.rstrip()[-1] in ".!?":
+            say = "That pair"                           # "Shoe 103 is waterproof." still needs a subject
+        elif re.search(r"\b(the|this|that|a|our|your|my)\s*$", before, re.I):
+            say = "pair"                                # "the item number 105 in beige"
+        else:
+            say = "that pair"                           # "I'd go with shoe 101 for trails"
+        out.append(text[last:m.start()] + say)
+        last = end
+    out.append(text[last:])
+    return _DANGLING.sub("", "".join(out))
+
+
 def speakable(text: str) -> str:
+    text = _BRACKETED.sub("", text)
+    text = _no_ids(text)
+    text = _RANGE.sub(r"\1 to \2", text)
+    text = _DASH.sub(", ", text)
     text = _BOLD.sub(r"\1", text)
     text = _STAGE.sub(r"\1", text)
     text = _EMPH.sub(r"\1", text)
@@ -139,7 +204,9 @@ def _drop_repeats(piece: str, said: set[str]) -> str:
     kept = []
     for sentence in _SENTENCE.split(core):
         key = re.sub(r"[^a-z0-9 ]", "", sentence.lower()).strip()
-        if key and key in said:
+        # ...nor a short sentence that only repeats part of one already said: live, "I can offer it for
+        # 108 dollars. 108 dollars." - the price echoed straight after it was given.
+        if key and (key in said or (len(key.split()) <= 4 and any(f" {key} " in f" {s} " for s in said))):
             continue
         said.add(key)
         kept.append(sentence)
@@ -156,13 +223,24 @@ def _cut(buf: str) -> int:
     end = max(buf.rfind(p) for p in (". ", "! ", "? "))
     if end >= 0:
         return end + 2
-    if len(buf) > 80:
-        # Cut at a word, but never just before an asterisk: the next chunk would then start with
-        # "*word*", which the sanitiser would mistake for a sentence-opening stage direction.
-        i = len(buf)
-        while (i := buf.rfind(" ", 0, i)) >= 0:
-            if buf[i + 1:i + 2] != "*":
-                return i + 1
+    # A sentence is spoken whole unless it runs long: the model streams a sentence in a tenth of a second,
+    # so cutting early buys almost nothing, and a cut mid-phrase is heard ("...perfect for your | runs.").
+    if len(buf) > 120:
+        # Never start the next piece with an asterisk or one of the shop's numbers: said on their own,
+        # "*word*" would look like a stage direction and "Shoe 101 and..." like the start of a sentence.
+        def clean(i: int) -> bool:
+            return buf[i:i + 1] != "*" and not _IDS.match(buf, i)
+
+        # A long sentence goes at its last pause - a comma or a dash - so it is phrased like speech.
+        for m in reversed(list(re.finditer(r", |; |: |—| – | - ", buf))):
+            if m.end() >= 40 and clean(m.end()):
+                return m.end()
+        # A very long one with no pause at all goes at a word.
+        if len(buf) > 200:
+            i = len(buf)
+            while (i := buf.rfind(" ", 0, i)) >= 0:
+                if clean(i + 1):
+                    return i + 1
     return 0
 
 
@@ -428,12 +506,14 @@ def create_app(agent=None) -> FastAPI:
                     hung_up = True
                     TRACER.event("voice_guard", session=sid, turn_id=turn_id,
                                  note="end_call added: caller and reply both said goodbye")
-                # An order turn only ends the call if the caller said goodbye themselves ("deal -
-                # bye!"): they have heard it is done. Otherwise they have not had a chance to react.
-                if hung_up and ordered and not _CALLER_BYE.search(text):
+                # Only the CALLER ends a call. Live, the model hung up on "Okay, deal. Just go with the
+                # initial one." - a customer trying to buy. A lingering line costs nothing (the caller
+                # hangs up, or the platform's time limit does); hanging up on a customer loses the sale.
+                if hung_up and not _CALLER_BYE.search(text):
                     hung_up = False
                     TRACER.event("voice_guard", session=sid, turn_id=turn_id,
-                                 note="end_call suppressed: an order was placed and the caller had not said goodbye")
+                                 note="end_call suppressed: the caller had not said goodbye"
+                                      + (" (an order was placed this turn)" if ordered else ""))
                 session.update(heard=users, reply=reply, hung_up=hung_up)
                 TRACER.event("voice", session=sid, turn_id=turn_id, ttft_ms=ttft,
                              ms=int((time.perf_counter() - t0) * 1000), fillers=fillers,

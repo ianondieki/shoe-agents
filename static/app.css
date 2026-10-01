@@ -1,0 +1,252 @@
+/* Mo's shoe shop, built out of kanga: the printed cotton every market in Nairobi is wrapped in.
+   A kanga is a border (pindo), a saturated field, and a proverb printed along the hem - so this shop
+   is an indigo field, a printed border top and bottom, and a line of Swahili that says what the shop
+   is for. Indigo because that is what a kanga is dyed; mustard because that is what a price tag is
+   cut from; red because every border print has it.
+
+   Two rules hold the whole thing together:
+     - the pattern lives in the borders, never in the middle, where the goods and the prices are;
+     - the number is the hero of every page. A price is what you came here to argue with. */
+:root {
+  --night: #15235f;               /* the indigo a kanga is dyed: the ground everything sits on */
+  --cloth: #f4ecdd;               /* unbleached cotton: the ink this shop writes on indigo with */
+  --paper: #fbf6ec;               /* a label, a slip, a receipt - paper pinned to the cloth */
+  --ink: #17120d;                 /* warm printing ink, for everything written on paper */
+  --mustard: #edaa14;             /* the third dye; every price tag is cut from it */
+  --flame: #d2372e;               /* the red in the border print: a fill, never small text */
+  --mpesa: #00a651;               /* money keeps its own green, and only money gets it */
+  --mpesa-deep: #00663a;          /* the same green, dark enough to carry white text */
+  --quiet: #5c5248;               /* ink thinned down, for small print on paper */
+  --faint: #c7bfab;               /* cloth thinned down, for small print on indigo */
+  --rule: rgba(244, 236, 221, 0.28);
+  --tap: 48px;                    /* nothing a thumb must hit is smaller than this */
+  --pindo: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='22' viewBox='0 0 56 22'><rect width='56' height='22' fill='%2315235f'/><path d='M14 1 L25 11 L14 21 L3 11 Z' fill='%23edaa14'/><path d='M42 1 L53 11 L42 21 L31 11 Z' fill='%23d2372e'/><circle cx='28' cy='11' r='3.2' fill='%23f4ecdd'/><circle cx='0' cy='11' r='3.2' fill='%23f4ecdd'/><circle cx='56' cy='11' r='3.2' fill='%23f4ecdd'/></svg>");
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--mustard) var(--night);
+  background: var(--night);
+}
+::selection { background: var(--mustard); color: var(--ink); }
+::placeholder { color: var(--quiet); opacity: 1; }
+input, textarea { caret-color: var(--flame); }
+
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--cloth);
+  font: 400 17px/1.6 Karla, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 34rem; margin: 0 auto; padding: 0 1.15rem 5rem; }
+main > * { min-width: 0; }
+a { color: inherit; text-underline-offset: 0.18em; text-decoration-thickness: 1.5px; }
+p { margin: 0.7rem 0; max-width: 62ch; }
+.small { font-size: 0.86rem; color: var(--faint); }
+
+h1, h2, h3 {
+  font-family: "Bricolage Grotesque", Karla, sans-serif;
+  font-weight: 800; letter-spacing: -0.035em; line-height: 0.98; margin: 0;
+  font-variation-settings: "opsz" 48;
+}
+h1 { font-size: clamp(2.7rem, 12.5vw, 4.4rem); text-wrap: balance; }
+h2 { font-size: 1.3rem; letter-spacing: -0.025em; }
+
+/* --- the border print, top and bottom, exactly as a kanga is bordered --- */
+.pindo { height: 22px; background: var(--pindo) repeat-x center / auto 100%; }
+
+.top { position: sticky; top: 0; z-index: 10; }
+.bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.55rem 1.15rem; background: var(--ink); color: var(--cloth);
+}
+.sign {
+  font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.45rem;
+  letter-spacing: -0.045em; text-decoration: none;
+}
+.sign span { color: var(--mustard); }
+.bar nav { display: flex; align-items: center; gap: 0.2rem; }
+.bar nav a {
+  text-decoration: none; padding: 0.45rem 0.65rem; min-height: var(--tap);
+  display: inline-flex; align-items: center; font-weight: 500;
+}
+.bar nav a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--mustard); }
+.bar nav a.who { background: var(--mustard); color: var(--ink); font-weight: 700; }
+.top a:focus-visible { outline: 3px solid var(--mustard); outline-offset: -3px; }
+
+/* --- the hem: what this shop is, said the way a kanga says it --- */
+.pitch { padding: 2rem 0 0.4rem; }
+.proverb { font-size: 1.15rem; color: var(--mustard); font-weight: 700; margin: 1rem 0 0.2rem; }
+.proverb em { font-style: normal; font-weight: 400; color: var(--cloth); }
+.pitch p { font-size: 1.04rem; }
+
+.haggle-bar { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1.4rem; }
+.haggle-bar a {
+  flex: 1 1 11rem; text-align: center; text-decoration: none; font-weight: 700;
+  padding: 0.9rem 1rem; min-height: var(--tap); display: flex; align-items: center;
+  justify-content: center;
+}
+.haggle-bar .talk { background: var(--mustard); color: var(--ink); }
+.haggle-bar .call { color: var(--cloth); box-shadow: inset 0 0 0 2px var(--cloth); }
+.haggle-bar a:hover { background: var(--flame); color: var(--cloth); box-shadow: none; }
+
+/* --- the stall: one pair to a row, and a tag cut from mustard card --- */
+.stall { list-style: none; margin: 1.9rem 0 0; padding: 0; border-top: 2px solid var(--cloth); }
+.pair {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.25rem 1rem;
+  align-items: start; padding: 1.2rem 0; border-bottom: 1px solid var(--rule);
+}
+.pair h2 { grid-column: 1; }
+.pair .about { grid-column: 1; color: var(--faint); font-size: 0.92rem; margin: 0.2rem 0 0; }
+.pair .last { color: var(--mustard); font-weight: 700; }
+
+.tag {
+  grid-row: 1 / span 2; grid-column: 2; align-self: start; position: relative; margin: 0;
+  background: var(--mustard); color: var(--ink); padding: 0.5rem 0.85rem 0.5rem 1.4rem;
+  min-width: 7rem; text-align: right; white-space: nowrap;
+  clip-path: polygon(0.8rem 0, 100% 0, 100% 100%, 0.8rem 100%, 0 50%);
+}
+.tag .usd {
+  display: block; font-family: "Bricolage Grotesque", sans-serif; font-weight: 800;
+  font-size: 1.45rem; letter-spacing: -0.04em; font-variant-numeric: tabular-nums;
+}
+.tag .ksh { display: block; font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tag::before {                     /* the punched hole a real tag hangs from */
+  content: ""; position: absolute; left: 0.52rem; top: 50%; width: 0.4rem; height: 0.4rem;
+  margin-top: -0.2rem; border-radius: 50%; background: var(--night);
+}
+.pair form { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+
+button, .button {
+  /* Cloth, not mustard: mustard belongs to the price tag, and a button beside a tag in the same
+     dye reads as one object. */
+  font: 700 1rem/1 Karla, sans-serif; min-height: var(--tap); padding: 0 1.15rem;
+  border: 0; cursor: pointer; background: var(--cloth); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+  transition: background 120ms linear, color 120ms linear;
+}
+button.quiet, .button.quiet {
+  background: transparent; color: var(--cloth); box-shadow: inset 0 0 0 2px var(--rule);
+}
+button:hover, .button:hover { background: var(--flame); color: var(--cloth); box-shadow: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--mustard); outline-offset: 2px;
+}
+
+/* --- talking to Mo: his words on paper, yours on a mustard slip --- */
+.thread { margin: 1.5rem 0 0; display: flex; flex-direction: column; gap: 0.75rem; }
+/* The ask bar is fixed over the page, so the page keeps a seat empty for it. */
+.ask-space { height: 7.5rem; }
+.said { max-width: 88%; padding: 0.75rem 0.95rem; margin: 0; }
+.said.mo { background: var(--paper); color: var(--ink); align-self: flex-start; }
+.said.you { background: var(--mustard); color: var(--ink); align-self: flex-end; }
+.said.note {
+  align-self: center; color: var(--faint); font-size: 0.86rem; background: none; padding: 0.2rem 0;
+}
+
+.openers { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 1.1rem 0 0; }
+.openers button {
+  min-height: 2.7rem; padding: 0 0.85rem; font-weight: 500; font-size: 0.92rem;
+  background: transparent; color: var(--cloth); box-shadow: inset 0 0 0 2px var(--rule);
+}
+.openers button:hover { background: var(--cloth); color: var(--ink); box-shadow: none; }
+
+.ask {
+  position: fixed; bottom: 0; left: 0; right: 0; background: var(--ink);
+  display: flex; gap: 0.5rem;
+  padding: 0.65rem max(1.15rem, calc((100% - 46rem) / 2));
+  padding-bottom: calc(0.65rem + env(safe-area-inset-bottom));
+}
+.ask input[type=text] {
+  flex: 1; min-height: var(--tap); border: 0; background: var(--paper);
+  padding: 0 0.85rem; font: 400 1rem Karla, sans-serif; color: var(--ink);
+}
+.mic { width: var(--tap); padding: 0; font-size: 1.1rem; background: var(--flame); color: var(--cloth); }
+.mic[data-on="1"] { background: var(--cloth); color: var(--flame); }
+
+/* --- an order is a paper slip, torn off the pad and handed over --- */
+.receipt { background: var(--paper); color: var(--ink); padding: 1.25rem; margin-top: 1.5rem; }
+.receipt h2 { margin-bottom: 0.9rem; }
+.receipt dl { display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; margin: 0; }
+.receipt dt { color: var(--quiet); }
+.receipt dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.receipt .total {
+  font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 1.5rem;
+  letter-spacing: -0.035em; color: var(--ink); padding-top: 0.4rem;
+}
+.receipt .small { color: var(--quiet); }
+.tear {                             /* where the shopkeeper tears the slip off the pad */
+  height: 0; margin: 1.1rem -1.25rem; border: 0; border-top: 2px dashed var(--ink);
+}
+.state {
+  display: inline-block; padding: 0.35rem 0.7rem; font-weight: 700; font-size: 0.9rem;
+  color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink);
+}
+.state.paid { background: var(--mpesa); box-shadow: inset 0 0 0 2px var(--mpesa-deep); }
+.state.pending { background: var(--mustard); }
+.state.unpaid { background: transparent; color: var(--quiet); box-shadow: inset 0 0 0 2px #ddd3bd; }
+.pay { background: var(--mpesa-deep); color: #fff; width: 100%; margin-top: 1.15rem; }
+.pay:hover { background: var(--ink); color: var(--paper); }
+
+.orders { list-style: none; margin: 1.6rem 0 0; padding: 0; border-top: 2px solid var(--cloth); }
+.orders li {
+  padding: 1rem 0; border-bottom: 1px solid var(--rule); display: grid;
+  grid-template-columns: minmax(0, 1fr) auto; gap: 0.3rem 1rem; align-items: center;
+}
+.orders .when { grid-column: 1; color: var(--faint); font-size: 0.86rem; margin: 0; }
+.orders .sum {
+  grid-row: 1 / span 2; grid-column: 2; text-align: right; margin: 0;
+  font-variant-numeric: tabular-nums; font-weight: 700; color: var(--mustard);
+}
+
+.problem {
+  background: var(--paper); color: var(--ink); border-top: 3px solid var(--flame);
+  padding: 0.85rem 0.95rem; margin: 1.2rem 0;
+}
+.empty { box-shadow: inset 0 0 0 2px var(--rule); padding: 1.5rem; margin-top: 1.5rem; }
+.empty p { margin: 0; }
+
+/* --- forms: two questions, asked plainly --- */
+label { display: block; margin-top: 1.2rem; font-weight: 700; }
+input[type=text], input[type=tel], input[type=email] {
+  width: 100%; min-height: var(--tap); border: 0; background: var(--paper);
+  padding: 0 0.85rem; font: 400 1rem Karla, sans-serif; margin-top: 0.35rem; color: var(--ink);
+}
+form .hint { color: var(--faint); font-size: 0.86rem; margin: 0.3rem 0 0; }
+
+footer { margin-top: 3.5rem; }
+footer .colophon {
+  max-width: 46rem; margin: 0 auto; padding: 1.2rem 1.15rem 2.4rem;
+  color: var(--faint); font-size: 0.9rem;
+}
+footer p { margin: 0.25rem 0; }
+
+/* --- the one moment anything moves: the shop stamps an order PAID --- */
+.stamp { animation: stamp 420ms cubic-bezier(.16, 1, .3, 1) both; transform-origin: 20% 60%; }
+@keyframes stamp {
+  from { transform: scale(1.7) rotate(-7deg); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp { animation: none; }
+  * { transition: none !important; }
+}
+
+@media (min-width: 40rem) {
+  /* A fixed tag width keeps the buttons in one column down the page: a $60 tag and a $150 tag are
+     two sizes of the same object, and a ragged third column shows it. */
+  main { max-width: 46rem; padding-top: 0.4rem; }
+  .pair { grid-template-columns: minmax(0, 1fr) 8.5rem auto; align-items: center; column-gap: 1.4rem; }
+  .tag { width: 8.5rem; min-width: 0; }
+  .pair form { grid-column: 3; margin-top: 0; flex-wrap: nowrap; }
+  .pitch { padding-top: 2.8rem; }
+}
+
+@media (min-width: 64rem) {
+  /* On a laptop a row can hold a whole shoe name on one line. Nothing else grows: the prose keeps
+     its measure and the tag keeps its size. */
+  main { max-width: 52rem; }
+  .pitch { padding-top: 3.4rem; }
+}

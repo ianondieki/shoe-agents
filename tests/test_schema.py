@@ -1,4 +1,5 @@
 """Check the added columns and the price snapshot, on fresh and pre-existing databases."""
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import json
 import os
 import sqlite3

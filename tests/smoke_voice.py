@@ -4,6 +4,7 @@ No voice, no ElevenLabs, no human. Isolated DB and trace file so the project's o
 Turn 3 is the exact utterance that made a Phase 0 run place a 119.99 order nobody agreed to;
 the assertions at the bottom fail if anything like that happens again.
 """
+import _safety  # noqa: F401  - first: no real email and no writes to the real outbox, ever
 import json
 import os
 import statistics

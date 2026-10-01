@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{% if voice %}Talk to Mo{% else %}Haggle with Mo{% endif %}{% endblock %}
+{% block body %}
+<section class="pitch">
+  <h1>{% if voice %}Talk to Mo{% else %}Haggle with Mo{% endif %}</h1>
+  <p class="proverb">Bei ni mazungumzo &mdash; <em>a price is a conversation</em>.</p>
+  <p class="small">
+    {% if voice %}Hold the red button, say your piece, let go. Mo answers out loud.
+    {% else %}Say what you are after, then make him an offer. He will not go below his floor.{% endif %}
+    {% if not me %} He asks who you are only when you are ready to order.{% endif %}
+  </p>
+</section>
+
+<div class="thread" id="thread" aria-live="polite">
+  <p class="said mo">Welcome to Mo's. What are you after today?</p>
+</div>
+
+<div class="openers" id="openers">
+  <button type="button">What have you got for trails?</button>
+  <button type="button">Best price on the road runner?</button>
+  <button type="button">I need something for hiking</button>
+</div>
+
+<div class="ask-space" aria-hidden="true"></div>
+
+<form class="ask" id="ask" autocomplete="off">
+  <input type="text" id="text" name="text" aria-label="Your message"
+         placeholder="{% if voice %}Or type instead{% else %}Ask Mo{% endif %}">
+  {% if voice %}<button type="button" class="mic" id="mic" aria-label="Hold to talk">&#9679;</button>{% endif %}
+  <button type="submit">Send</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>window.MO = { voice: {{ 'true' if voice else 'false' }} };</script>
+<script src="/static/chat.js"></script>
+{% endblock %}

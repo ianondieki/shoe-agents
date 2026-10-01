@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}One moment{% endblock %}
+{% block body %}
+<section class="pitch">
+  <h1>Thanks, {{ me.name.split()[0] if me else 'friend' }}.</h1>
+  <p class="proverb">Mo is writing the slip.</p>
+  <p>The form below carries on by itself. Press the button if nothing happens.</p>
+</section>
+<form method="post" action="/buy" id="go">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="shoe_id" value="{{ shoe_id }}">
+  <p><button type="submit">Finish the order</button></p>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>document.getElementById("go").submit();</script>
+{% endblock %}

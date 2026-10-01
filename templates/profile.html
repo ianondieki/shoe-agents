@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Your details{% endblock %}
+{% block body %}
+<section class="pitch">
+  <h1>{% if me %}Your details{% else %}Who is buying?{% endif %}</h1>
+  {% if me %}
+  <p class="proverb">Mo knows where to send the prompt.</p>
+  {% else %}
+  <p class="proverb">Jina lako na namba &mdash; <em>your name and your number</em>.</p>
+  <p>Two things, and only because an order needs them: what to call you, and the M-Pesa number that
+    pays. No password here. The PIN prompt arriving on your phone is the proof it is you.</p>
+  {% endif %}
+</section>
+
+{% if me %}
+<section class="receipt">
+  <dl>
+    <dt>Name</dt><dd>{{ me.name }}</dd>
+    <dt>M-Pesa</dt><dd>+{{ me.phone[:3] }} {{ me.phone[3:6] }} {{ me.phone[6:9] }} {{ me.phone[9:] }}</dd>
+  </dl>
+  <p class="small">Payments go to this number. Fill the form in again to change either.</p>
+</section>
+{% endif %}
+
+{% if problem %}<p class="problem">{{ problem }}. Try that again.</p>{% endif %}
+
+<form method="post" action="/profile">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="next" value="{{ next }}">
+  <input type="hidden" name="shoe_id" value="{{ shoe_id }}">
+
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" required autocomplete="name"
+         value="{{ name or (me.name if me else '') }}" placeholder="Grace Wanjiru">
+
+  <label for="phone">M-Pesa number</label>
+  <input id="phone" name="phone" type="tel" required autocomplete="tel" inputmode="tel"
+         value="{{ phone or (me.phone if me else '') }}" placeholder="07xx xxx xxx">
+  <p class="hint">Kenyan mobile. 07, 01 or +254 all work.</p>
+
+  <label for="email">Email for the receipt <span class="small">(optional)</span></label>
+  <input id="email" name="email" type="email" autocomplete="email" value="{{ email or '' }}">
+
+  <p><button type="submit">{% if me %}Save changes{% else %}Save and carry on{% endif %}</button></p>
+</form>
+{% endblock %}
